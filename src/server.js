@@ -10,9 +10,9 @@ import { Readable } from "stream"; // Import Readable stream
 import Queue from "bull";
 import cors from "cors";
 
-import yauzl from 'yauzl';
-import JSONStream from 'JSONStream';
-import path from 'path'; // Import path library
+import yauzl from "yauzl";
+import JSONStream from "JSONStream";
+import path from "path"; // Import path library
 
 const app = express();
 app.use(cors());
@@ -27,11 +27,16 @@ const swaggerOptions = {
       description: "Description of your API",
     },
   },
-  apis: ["./src/routes/*.js"], // Ajuste o caminho para as rotas dentro da pasta 'src'
+  apis: ["./src/routes/example.js"], // Ajuste o caminho para as rotas dentro da pasta 'src'
 };
 
 const swaggerSpec = swaggerJSDoc(swaggerOptions);
-app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec));
+//app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec));
+app.use(
+  "/api-docs",
+  swaggerUi.serve,
+  swaggerUi.setup(swaggerSpec, null, null, null, null, `/`)
+);
 
 // Conexão com o Redis
 const redisConfig = {
@@ -121,9 +126,9 @@ zipQueue.process(async (job) => {
     }
 
     zipfile.readEntry();
-    zipfile.on('entry', (entry) => {
-      if (path.extname(entry.fileName) === '.json') {
-        const jsonStream = JSONStream.parse('*');
+    zipfile.on("entry", (entry) => {
+      if (path.extname(entry.fileName) === ".json") {
+        const jsonStream = JSONStream.parse("*");
         zipfile.openReadStream(entry, (err, readStream) => {
           if (err) {
             console.error("Error opening entry stream:", err);
@@ -131,12 +136,12 @@ zipQueue.process(async (job) => {
           }
 
           readStream.pipe(jsonStream);
-          jsonStream.on('data', (obj) => {
-            console.log('Objeto JSON:', obj);
+          jsonStream.on("data", (obj) => {
+            console.log("Objeto JSON:", obj);
           });
 
-          jsonStream.on('end', () => {
-            console.log('JSON stream ended.');
+          jsonStream.on("end", () => {
+            console.log("JSON stream ended.");
             zipfile.readEntry();
           });
         });
@@ -145,7 +150,7 @@ zipQueue.process(async (job) => {
       }
     });
 
-    zipfile.on('end', () => {
+    zipfile.on("end", () => {
       console.log("ZIP file processed successfully");
     });
   });
