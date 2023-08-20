@@ -54,9 +54,7 @@ router.get("/hello", (req, res) => {
 router.post("/square", (req, res) => {
   const { number } = req.body;
   if (typeof number !== "number") {
-    return res
-      .status(400)
-      .json({ error: 'O parâmetro "number" deve ser um número.' });
+    return res.status(400).json({ error: 'O parâmetro "number" deve ser um número.' });
   }
   const square = number * number;
   return res.json({ result: square });

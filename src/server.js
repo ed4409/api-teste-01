@@ -10,6 +10,10 @@ import { Readable } from "stream"; // Import Readable stream
 import Queue from "bull";
 import cors from "cors";
 
+import yauzl from 'yauzl';
+import JSONStream from 'JSONStream';
+import path from 'path'; // Import path library
+
 const app = express();
 app.use(cors());
 const upload = multer({ dest: "src/uploads/" });
@@ -57,14 +61,16 @@ function transformZipStream(zipFilePath) {
   return new Transform({
     objectMode: true,
     async transform(chunk, encoding, callback) {
-      const zip = new AdmZip();
-      zip.addFile("file.zip", chunk);
+      const zip = new AdmZip(chunk);
+      const zipBuffer = zip.toBuffer();
+
       const zipStream = new Readable({
         read() {
-          this.push(zip.toBuffer());
+          this.push(zipBuffer);
           this.push(null);
         },
       });
+
       callback(null, zipStream);
     },
   });
@@ -82,11 +88,8 @@ app.post("/upload", upload.single("zipFile"), async (req, res) => {
   // Transformar o arquivo ZIP em stream
   const zipStream = fs.createReadStream(zipFilePath);
 
-  // Transformar o stream do ZIP
-  const transformedZipStream = zipStream.pipe(transformZipStream(zipFilePath));
-
   // Adicionar a pasta zipada à fila no Redis usando Bull
-  const zipBuffer = await streamToBuffer(transformedZipStream);
+  const zipBuffer = await streamToBuffer(zipStream);
   await zipQueue.add({ zipBuffer });
 
   return res.json({
@@ -100,22 +103,52 @@ async function streamToBuffer(stream) {
   for await (const chunk of stream) {
     chunks.push(chunk);
   }
-  return Buffer.concat(chunks);
+  const buffer = Buffer.concat(chunks);
+  return buffer;
 }
 
 // Processar a fila usando Bull
 zipQueue.process(async (job) => {
   const { zipBuffer } = job.data;
 
-  // Connect to Redis and perform your processing logic here
-  // For example, update the buffer with actual processing logic
-
   console.log("Processing ZIP file...");
 
-  // Simulating a connection to Redis and updating the buffer (replace with your logic)
-  await new Promise((resolve) => setTimeout(resolve, 2000)); // Simulate processing time
+  // Usando yauzl para ler o arquivo ZIP
+  yauzl.fromBuffer(zipBuffer, { lazyEntries: true }, (err, zipfile) => {
+    if (err) {
+      console.error("Error opening ZIP file:", err);
+      return;
+    }
 
-  console.log("ZIP file processed successfully");
+    zipfile.readEntry();
+    zipfile.on('entry', (entry) => {
+      if (path.extname(entry.fileName) === '.json') {
+        const jsonStream = JSONStream.parse('*');
+        zipfile.openReadStream(entry, (err, readStream) => {
+          if (err) {
+            console.error("Error opening entry stream:", err);
+            return;
+          }
+
+          readStream.pipe(jsonStream);
+          jsonStream.on('data', (obj) => {
+            console.log('Objeto JSON:', obj);
+          });
+
+          jsonStream.on('end', () => {
+            console.log('JSON stream ended.');
+            zipfile.readEntry();
+          });
+        });
+      } else {
+        zipfile.readEntry();
+      }
+    });
+
+    zipfile.on('end', () => {
+      console.log("ZIP file processed successfully");
+    });
+  });
 
   return { result: "Processed successfully" };
 });
